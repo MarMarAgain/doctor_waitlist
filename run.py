@@ -1,12 +1,11 @@
 import gspread
 from google.oauth2.service_account import Credentials
-from pprint import pprint
 from datetime import datetime
 
 SCOPE = [
-   "https://www.googleapis.com/auth/spreadsheets",
-   "https://www.googleapis.com/auth/drive.file",
-   "https://www.googleapis.com/auth/drive"
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/drive"
 ]
 
 # Load Credentials and Access spreadsheet
@@ -15,16 +14,15 @@ SCOPED_CREDS = CREDS.with_scopes(SCOPE)
 GSPREAD_CLIENT = gspread.authorize(SCOPED_CREDS)
 SHEET = GSPREAD_CLIENT.open('DCFC cleaning')
 
+
 def get_month():
     """Get month desired from user"""
-    print("Please enter the month you wish to translate")
-    print("Write the Month with a capital letter at the beginning - ex: 'March'")
+    print("Please enter the current Month for validation")
 
     while True:
         data_str = input("Enter the Month here: ")
-        #Changed to .format method as codeanywhere has python version 3.5. Tried to upgrade and encountered further error messages.
-        print("The Month you provided is {}".format(data_str))
-        print("Converting data now...\n")
+        print(f"The Month you provided is {data_str}\n")
+        print(f"Converting data now...\n")
 
         try:
             validate_data(data_str)
@@ -35,13 +33,16 @@ def get_month():
             print(f"Invalid data {e}. Please try again\n")
 
 
+current_month = datetime.now().month
+
+
 def validate_data(data_str):
     # Raise an error if the user does not enter a Month
 
-    months = ["January", "February", "March", "April", "May", "June",
-              "July", "August", "September", "October", "November", "December"]
-    if data_str not in months:
-        raise ValueError("Invalid month format. Please enter the month with a capital letter at the beginning, e.g., 'March'.")
+    months = ["january", "february", "march", "april", "may", "june",
+              "july", "august", "september", "october", "november", "december"]
+    if data_str.lower() not in months or data_str.lower() != months[current_month - 1]:
+        raise ValueError("Invalid Month entered. Please enter the current Month only")
 
 
 def get_sheet1_data(selected_month):
@@ -51,6 +52,8 @@ def get_sheet1_data(selected_month):
 
     # Process the data
     processed_data = []
+    regular_hours = 0
+    extra_hours = 0
     previous_date = None
     for row in data:
         date = row[0]
@@ -82,29 +85,37 @@ def get_sheet1_data(selected_month):
         elif '1pm' in time:
             time = '10am'
         # Formatting duration
-        duration = f"{row[4]} hrs" 
+        duration = f"{row[4]} hrs"
         if duration == " hrs":
-            continue 
-        processed_data.append(["Dance Cork Firkin Crane", area, duration, f"{date} {selected_month} 2024", time])
+            continue
 
-    return processed_data
+        # Check if it's Sunday
+        if day.lower() == "sunday":
+            extra_hours += float(row[4])  # Assuming duration is in hours
+        else:
+            regular_hours += float(row[4])  # Assuming duration is in hours
+
+        processed_data.append(
+            ["Dance Cork Firkin Crane", area, duration, f"{date} {selected_month.capitalize()} 2024", time])
+
+    return processed_data, regular_hours, extra_hours
 
 
 def main():
     # Get the month from the user
-    selected_month = get_month() 
+    selected_month = get_month()
 
     # Get data from Sheet1
-    processed_data = get_sheet1_data(selected_month)
+    processed_data, regular_hours, extra_hours = get_sheet1_data(selected_month)
 
     # Open target worksheet (Sheet2)
     target_worksheet = SHEET.worksheet("Sheet2")
 
     # Clear previous values in Sheet2
     target_worksheet.clear()
-    
-    # Define the titles and corresponding cells 
-    titles = ["Place", "Area", "Duration", "Date", "Start Time"]
+
+    # Define the titles and corresponding cells
+    titles = ["Place", "Area", "Duration", "Date", "Start Time", "Billable Hours (regular)", "Billable Hours (extra)"]
 
     # Apply bold formatting to the titles row
     bold_format = {
@@ -115,9 +126,16 @@ def main():
         target_worksheet.format(f"{chr(64 + i)}1", bold_format)
 
     # Write processed data to the target worksheet. Start from the second row/column
-    for i, row in enumerate(processed_data, start=2): 
+    for i, row in enumerate(processed_data, start=2):
         target_worksheet.insert_row(row, i)
 
-    print("Changes Successful")
+    print("Calculating billable hours")
+
+    # Insert regular and extra hours in Sheet2
+    target_worksheet.update_cell(2, len(titles) - 1, regular_hours)  # Regular hours
+    target_worksheet.update_cell(2, len(titles), extra_hours)  # Extra hours
+
+    print("Changes successful")
+
 
 main()
